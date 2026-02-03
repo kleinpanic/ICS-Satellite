@@ -2,7 +2,7 @@ name: Process Location Request
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [labeled]
 
 permissions:
   contents: write
@@ -17,9 +17,7 @@ jobs:
   process-request:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: >
-      (github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'location-request')) ||
-      (github.event.action == 'labeled' && github.event.label.name == 'location-request')
+    if: github.event.action == 'labeled' && github.event.label.name == 'location-request'
     outputs:
       valid: ${{ steps.validate.outputs.valid }}
       existing: ${{ steps.validate.outputs.existing }}
@@ -71,7 +69,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              labels: ["location-request", "processing"],
+              labels: ["processing"],
             });
 
             await github.rest.issues.removeLabel({
@@ -88,14 +86,12 @@ jobs:
               name: "processed",
             }).catch(() => {});
 
-            if (["opened", "labeled"].includes(context.payload.action)) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: "Processing location request... I will update this issue when the request is validated and persisted. Pages deploys are coalesced to avoid backlog.",
-              });
-            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: "Processing location request... I will update this issue when the request is validated and persisted. Pages deploys are coalesced to avoid backlog.",
+            });
 
       - uses: actions/checkout@v4
         with:
