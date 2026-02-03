@@ -32,12 +32,12 @@ def test_location_request_not_triggered_on_edited() -> None:
     issues = on_section.get("issues", {})
     types = issues.get("types", []) if isinstance(issues, dict) else []
     assert "edited" not in types
+    assert types == ["labeled"]
 
 
 def test_location_request_job_gates_on_label_name() -> None:
     text = Path(".github/workflows/location_request.yml").read_text()
     assert "github.event.label.name == 'location-request'" in text
-    assert "github.event.action == 'opened'" in text
     assert "github.event.action == 'labeled'" in text
 
 
@@ -53,6 +53,11 @@ def test_location_request_dispatches_pages_workflow() -> None:
     assert "listWorkflowRuns" in text
     assert "createWorkflowDispatch" in text
     assert "pages.yml" in text
+
+
+def test_location_request_does_not_add_location_request_label() -> None:
+    text = Path(".github/workflows/location_request.yml").read_text()
+    assert 'labels: ["location-request", "processing"]' not in text
 
 
 def test_pages_workflow_is_single_deployer() -> None:
