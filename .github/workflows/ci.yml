@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Report Python version
+        run: |
+          echo "::group::Python version"
+          python --version
+          echo "::endgroup::"
+      - name: Install dependencies
+        run: |
+          echo "::group::make dev"
+          make dev
+          echo "::endgroup::"
+      - name: Report tooling versions
+        run: |
+          echo "::group::Lint tool versions"
+          .venv/bin/ruff --version
+          .venv/bin/mypy --version
+          echo "::endgroup::"
+      - name: Validate workflow and issue template YAML
+        run: |
+          echo "::group::Validate YAML"
+          .venv/bin/python - << 'PY'
+          import sys
+          from pathlib import Path
+          import yaml
+
+          paths = list(Path(".github/workflows").glob("*.yml"))
+          paths += list(Path(".github/ISSUE_TEMPLATE").glob("*.yml"))
+          errors = []
+          for path in paths:
+              try:
+                  yaml.safe_load(path.read_text())
+              except Exception as exc:
+                  errors.append(f"{path}: {exc}")
+          if errors:
+              for error in errors:
+                  print(f"::error::{error}")
+              sys.exit(1)
+          print(f"Validated {len(paths)} YAML files.")
+          PY
+          echo "::endgroup::"
+      - name: Check notify run URL usage
+        run: |
+          echo "::group::Check notify run URL"
+          .venv/bin/python - << 'PY'
+          from pathlib import Path
+
+          text = Path(".github/workflows/location_request.yml").read_text()
+          if "runUrl" in text and "const runUrl" not in text:
+              raise SystemExit("runUrl referenced without declaration in location_request.yml")
+          print("runUrl usage check passed.")
+          PY
+          echo "::endgroup::"
+      - name: Run lint
+        run: |
+          echo "::group::make lint"
+          make lint
+          echo "::endgroup::"
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Report Python version
+        run: |
+          echo "::group::Python version"
+          python --version
+          echo "::endgroup::"
+      - name: Cache ephemeris data
+        uses: actions/cache@v4
+        with:
+          path: .cache/ephemeris
+          key: ephemeris-de421
+      - name: Run tests
+        run: |
+          echo "::group::make test"
+          make test
+          echo "::endgroup::"

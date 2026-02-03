@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="favicon.ico" sizes="any">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <title>Satellite Pass Calendar</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div class="hero-inner">
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow">Satellite Pass Calendar</p>
+            <h1>Satellite and planet pass feeds for your location.</h1>
+            <p class="lede">
+              Pick a featured feed and subscribe instantly, or request a custom location if it
+              does not exist yet. Planetary bundles include rise, transit, and set times.
+            </p>
+            <div class="hero-meta">
+              <div>
+                <span class="label">Last updated</span>
+                <span id="last-updated" class="value">Loading...</span>
+              </div>
+              <div>
+                <span class="label">Manifest</span>
+                <span id="manifest-status" class="value">Loading...</span>
+              </div>
+            </div>
+          </div>
+          <div class="hero-card">
+            <h2>Start here</h2>
+            <ol>
+              <li>Choose a location and bundle.</li>
+              <li>Copy the HTTPS link for most apps, or use webcal for Apple.</li>
+              <li>Need a new feed? Request it and automation will build it.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div id="manifest-error" class="banner error hidden" role="alert">
+      Unable to load the manifest. Check your network connection or try again later.
+    </div>
+
+    <main class="flow">
+      <div class="flow-main">
+        <div class="flow-nav" role="tablist" aria-label="Feed flow">
+          <button class="flow-tab active" data-target="subscribe-panel" role="tab" aria-selected="true">
+            Subscribe
+          </button>
+          <button class="flow-tab" data-target="request-panel" role="tab" aria-selected="false">
+            Request
+          </button>
+          <button class="flow-tab" data-target="about-panel" role="tab" aria-selected="false">
+            About
+          </button>
+        </div>
+
+        <section class="panel flow-panel active" id="subscribe-panel" role="tabpanel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Subscribe by location</h2>
+              <p class="panel-lede">
+                Featured feeds are generated every 6 hours. Pick a location and add one or more bundles to subscribe instantly.
+              </p>
+            </div>
+            <div class="panel-meta">
+              <span class="meta-pill">Apple uses webcal</span>
+              <span class="meta-pill">Others use HTTPS</span>
+            </div>
+          </div>
+          <div class="panel-row">
+            <label for="location">Location</label>
+            <select id="location"></select>
+            <div id="location-type" class="helper hidden"></div>
+          </div>
+          <div class="panel-row bundle-group">
+            <div class="bundle-header">
+              <label>Bundles</label>
+              <button id="bundle-add" class="tertiary" type="button">Add another</button>
+            </div>
+            <div id="bundle-list" class="bundle-list"></div>
+          </div>
+          <template id="bundle-row-template">
+            <div class="bundle-item">
+              <div class="bundle-row">
+                <label>Bundle</label>
+                <select class="bundle-select"></select>
+                <button class="tertiary bundle-remove" type="button">Remove</button>
+              </div>
+              <div class="bundle-actions">
+                <button class="primary bundle-subscribe" type="button">Subscribe (Apple)</button>
+                <button class="secondary bundle-download" type="button">Download .ics</button>
+              </div>
+              <div class="bundle-output">
+                <div>
+                  <span class="label">Selected feed</span>
+                  <span class="value bundle-label"></span>
+                </div>
+                <div class="url-row">
+                  <span class="label">HTTPS</span>
+                  <a class="value-link mono bundle-url" href="#" target="_blank" rel="noopener"></a>
+                  <button class="tertiary bundle-copy-https" type="button">Copy</button>
+                </div>
+                <div class="url-row">
+                  <span class="label">webcal</span>
+                  <a class="value-link mono bundle-webcal" href="#" target="_blank" rel="noopener"></a>
+                  <button class="tertiary bundle-copy-webcal" type="button">Copy</button>
+                </div>
+              </div>
+              <div class="notice hidden bundle-missing">
+                This feed is not available yet.
+                <button class="primary bundle-request" type="button">Request this feed</button>
+              </div>
+              <div class="notice hidden bundle-coverage">
+                Coverage for this location is incomplete for this bundle.
+              </div>
+            </div>
+          </template>
+        </section>
+
+        <section class="panel request flow-panel" id="request-panel" role="tabpanel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Request a custom location</h2>
+              <p class="panel-lede">
+                Enter coordinates for any location worldwide. The manifest is the source of truth for what
+                already exists.
+              </p>
+            </div>
+            <div class="panel-meta">
+              <span class="meta-pill">Automation builds new feeds</span>
+            </div>
+          </div>
+        <div id="allowlist-note" class="notice hidden">
+          Requests are limited to approved GitHub accounts. If your request is closed, contact the
+          repository owner to get added to the allowlist.
+        </div>
+        <div class="panel-row">
+          <label for="request-name">Location name (optional)</label>
+          <input id="request-name" type="text" placeholder="City, Country" />
+        </div>
+        <div class="panel-row row-with-button">
+          <div class="input-group">
+            <label for="request-lat">Latitude</label>
+            <input id="request-lat" type="number" step="0.0001" min="-90" max="90" placeholder="47.6062" />
+          </div>
+          <div class="input-group">
+            <label for="request-lon">Longitude</label>
+            <input id="request-lon" type="number" step="0.0001" min="-180" max="180" placeholder="-122.3321" />
+          </div>
+          <button id="geolocate" class="secondary geo-btn" title="Use my current location">Use my location</button>
+        </div>
+        <div id="geo-error" class="geo-error hidden"></div>
+        <div class="panel-row">
+          <label for="request-bundle">Bundle</label>
+          <select id="request-bundle"></select>
+        </div>
+        <div class="panel-row">
+          <label for="request-satellites">Select satellites (optional)</label>
+          <div class="satellite-tools">
+            <div class="satellite-search">
+              <input
+                id="satellite-search"
+                type="text"
+                placeholder="Search satellites or NORAD IDs"
+                autocomplete="off"
+              />
+            </div>
+            <div class="satellite-actions">
+              <button id="satellite-select-all" class="tertiary" type="button">Select all</button>
+              <button id="satellite-clear" class="tertiary" type="button">Clear</button>
+              <span id="satellite-count" class="satellite-count">0 selected</span>
+              <span id="satellite-remaining" class="satellite-remaining"></span>
+            </div>
+          </div>
+          <div id="satellite-chips" class="satellite-chips"></div>
+          <select id="request-satellites" multiple size="8"></select>
+          <p id="satellite-helper" class="helper">
+            Leave empty to use the default selection for this bundle.
+          </p>
+          <p id="satellite-meta" class="helper hidden"></p>
+          <div id="satellite-error" class="geo-error hidden"></div>
+        </div>
+        <div class="panel-output preview">
+          <div>
+            <span class="label">Computed slug</span>
+            <span id="computed-slug" class="value mono"></span>
+          </div>
+          <div>
+            <span class="label">Expected HTTPS URL</span>
+            <a id="expected-https" class="value-link mono" href="#" target="_blank" rel="noopener"></a>
+          </div>
+          <div>
+            <span class="label">Expected webcal URL</span>
+            <a id="expected-webcal" class="value-link mono" href="#" target="_blank" rel="noopener"></a>
+          </div>
+          <div id="feed-exists-notice" class="notice hidden">
+            This feed already exists. You can subscribe directly using the URLs above.
+          </div>
+        </div>
+        <div class="panel-actions">
+          <button id="request-copy" class="secondary">Copy payload</button>
+          <button id="request-issue" class="primary">Request this feed</button>
+          <button id="request-copy-https" class="tertiary" type="button">Copy HTTPS</button>
+          <button id="request-copy-webcal" class="tertiary" type="button">Copy webcal</button>
+        </div>
+        <div id="request-status" class="status hidden"></div>
+        <div class="panel-row">
+          <label>Request payload (JSON)</label>
+          <textarea id="request-payload" rows="6" readonly></textarea>
+        </div>
+        </section>
+
+        <section class="panel flow-panel" id="about-panel" role="tabpanel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">About these feeds</h2>
+              <p class="panel-lede">
+                Feeds refresh on a rolling window, so you stay subscribed without manual updates.
+              </p>
+            </div>
+            <div class="panel-meta">
+              <span class="meta-pill">Rolling 14 days</span>
+              <span class="meta-pill">Auto-refresh every 6 hours</span>
+            </div>
+          </div>
+          <div class="panel-row">
+            <h3>Subscription options</h3>
+            <ul class="about-list">
+              <li>Apple Calendar uses <span class="mono">webcal://</span> subscriptions.</li>
+              <li>Other apps can use HTTPS URLs or download the <span class="mono">.ics</span> file.</li>
+              <li>Calendar apps refresh the URL automatically; you do not need to re-subscribe.</li>
+              <li>Planetary bundles include rise, transit, and set events.</li>
+            </ul>
+          </div>
+          <div class="panel-row">
+            <h3>Request workflow</h3>
+            <ul class="about-list">
+              <li>Requests open a GitHub issue with a JSON payload.</li>
+              <li>Automation validates the request, builds the feed, and deploys updates.</li>
+              <li>Once approved, the feed appears in the manifest for future builds.</li>
+            </ul>
+          </div>
+        </section>
+      </div>
+
+      <aside class="flow-aside">
+        <div class="side-card stats-card">
+          <h3>Stats</h3>
+          <dl class="stats-list">
+            <div>
+              <dt>Total feeds</dt>
+              <dd id="stats-feeds">-</dd>
+            </div>
+            <div>
+              <dt>Satellite feeds</dt>
+              <dd id="stats-feeds-sat">-</dd>
+            </div>
+            <div>
+              <dt>Planetary feeds</dt>
+              <dd id="stats-feeds-planet">-</dd>
+            </div>
+            <div>
+              <dt>Featured locations</dt>
+              <dd id="stats-featured">-</dd>
+            </div>
+            <div>
+              <dt>Requested locations</dt>
+              <dd id="stats-requested-locations">-</dd>
+            </div>
+            <div>
+              <dt>Satellite bundles</dt>
+              <dd id="stats-bundles-sat">-</dd>
+            </div>
+            <div>
+              <dt>Planetary bundles</dt>
+              <dd id="stats-bundles-planet">-</dd>
+            </div>
+            <div>
+              <dt>Requested feeds</dt>
+              <dd id="stats-requested">-</dd>
+            </div>
+          </dl>
+          <p class="stats-note" id="stats-requested-note"></p>
+          <p class="stats-note" id="stats-last-fulfilled">Last request fulfilled: -</p>
+          <p class="stats-note" id="stats-window">Rolling window: - days</p>
+          <p class="stats-note" id="stats-refresh">Refresh cadence: -</p>
+          <p class="stats-note" id="stats-build-info"></p>
+        </div>
+        <div class="side-card">
+          <h3>Links &amp; updates</h3>
+          <p class="helper">
+            Pages refresh every 6 hours with the latest passes. Requests open GitHub issues for validation.
+          </p>
+          <div class="link-list">
+            <a id="docs-repo" class="value-link" href="#" target="_blank" rel="noopener">Repository</a>
+            <a id="docs-issues" class="value-link" href="#" target="_blank" rel="noopener">Request an update</a>
+          </div>
+        </div>
+      </aside>
+
+    </main>
+
+    <details class="instructions">
+      <summary>How to subscribe</summary>
+      <div class="instruction-grid">
+        <div>
+          <h3>Apple (iOS/macOS)</h3>
+          <p>Tap Subscribe to open the calendar subscription prompt.</p>
+        </div>
+        <div>
+          <h3>Android / Desktop</h3>
+          <p>Copy the HTTPS link and use Subscribe by URL in your calendar app, or download and import.</p>
+        </div>
+        <div>
+          <h3>Switching locations</h3>
+          <p>Unsubscribe from the old calendar, then pick a new location here and subscribe again.</p>
+        </div>
+      </div>
+    </details>
+
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+    <footer>
+      <span id="build-info"></span>
+      <a
+        id="repo-link"
+        class="repo-link"
+        href="#"
+        target="_blank"
+        rel="noopener"
+        aria-label="GitHub repository"
+        title="GitHub repository"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path
+            d="M12 2C6.48 2 2 6.58 2 12.26c0 4.5 2.87 8.32 6.84 9.67.5.1.68-.22.68-.48 0-.24-.01-.88-.01-1.73-2.78.62-3.36-1.38-3.36-1.38-.45-1.2-1.11-1.52-1.11-1.52-.91-.64.07-.63.07-.63 1 .07 1.53 1.06 1.53 1.06.9 1.58 2.36 1.12 2.94.85.09-.67.35-1.12.64-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.32.1-2.76 0 0 .84-.28 2.75 1.06a9.2 9.2 0 0 1 5 0c1.91-1.34 2.75-1.06 2.75-1.06.55 1.44.2 2.5.1 2.76.64.72 1.03 1.64 1.03 2.76 0 3.93-2.34 4.8-4.57 5.06.36.32.68.95.68 1.92 0 1.38-.01 2.5-.01 2.84 0 .26.18.58.69.48 3.96-1.35 6.83-5.17 6.83-9.67C22 6.58 17.52 2 12 2z"
+          />
+        </svg>
+      </a>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>

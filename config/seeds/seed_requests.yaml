@@ -1,0 +1,153 @@
+requests:
+  - name: "New York, NY"
+    lat: 40.7128
+    lon: -74.0060
+    bundle_slug: "popular"
+  - name: "Los Angeles, CA"
+    lat: 34.0522
+    lon: -118.2437
+    bundle_slug: "popular"
+  - name: "Chicago, IL"
+    lat: 41.8781
+    lon: -87.6298
+    bundle_slug: "popular"
+  - name: "Seattle, WA"
+    lat: 47.6062
+    lon: -122.3321
+    bundle_slug: "popular"
+  - name: "San Francisco, CA"
+    lat: 37.7749
+    lon: -122.4194
+    bundle_slug: "popular"
+  - name: "Washington, DC"
+    lat: 38.9072
+    lon: -77.0369
+    bundle_slug: "popular"
+  - name: "Miami, FL"
+    lat: 25.7617
+    lon: -80.1918
+    bundle_slug: "noaa-apt"
+  - name: "Denver, CO"
+    lat: 39.7392
+    lon: -104.9903
+    bundle_slug: "popular"
+  - name: "Dallas, TX"
+    lat: 32.7767
+    lon: -96.7970
+    bundle_slug: "popular"
+  - name: "Atlanta, GA"
+    lat: 33.7490
+    lon: -84.3880
+    bundle_slug: "noaa-apt"
+  - name: "Blacksburg, VA"
+    lat: 37.2296
+    lon: -80.4139
+    bundle_slug: "iss"
+  - name: "Blacksburg, VA"
+    lat: 37.2296
+    lon: -80.4139
+    bundle_slug: "popular"
+  - name: "Boston, MA"
+    lat: 42.3601
+    lon: -71.0589
+    bundle_slug: "popular"
+  - name: "Toronto, Canada"
+    lat: 43.6532
+    lon: -79.3832
+    bundle_slug: "popular"
+  - name: "Mexico City, Mexico"
+    lat: 19.4326
+    lon: -99.1332
+    bundle_slug: "popular"
+  - name: "Sao Paulo, Brazil"
+    lat: -23.5558
+    lon: -46.6396
+    bundle_slug: "popular"
+  - name: "Buenos Aires, Argentina"
+    lat: -34.6037
+    lon: -58.3816
+    bundle_slug: "noaa-apt"
+  - name: "London, UK"
+    lat: 51.5074
+    lon: -0.1278
+    bundle_slug: "popular"
+  - name: "Paris, France"
+    lat: 48.8566
+    lon: 2.3522
+    bundle_slug: "popular"
+  - name: "Berlin, Germany"
+    lat: 52.5200
+    lon: 13.4050
+    bundle_slug: "popular"
+  - name: "Rome, Italy"
+    lat: 41.9028
+    lon: 12.4964
+    bundle_slug: "popular"
+  - name: "Tokyo, Japan"
+    lat: 35.6895
+    lon: 139.6917
+    bundle_slug: "popular"
+  - name: "Seoul, South Korea"
+    lat: 37.5665
+    lon: 126.9780
+    bundle_slug: "popular"
+  - name: "Beijing, China"
+    lat: 39.9042
+    lon: 116.4074
+    bundle_slug: "popular"
+  - name: "Shanghai, China"
+    lat: 31.2304
+    lon: 121.4737
+    bundle_slug: "popular"
+  - name: "Sydney, Australia"
+    lat: -33.8688
+    lon: 151.2093
+    bundle_slug: "popular"
+  - name: "Dubai, UAE"
+    lat: 25.2048
+    lon: 55.2708
+    bundle_slug: "popular"
+  - name: "Houston, TX"
+    lat: 29.7604
+    lon: -95.3698
+    bundle_slug: "stations"
+  - name: "Anchorage, AK"
+    lat: 61.2181
+    lon: -149.9003
+    bundle_slug: "weather"
+  - name: "Honolulu, HI"
+    lat: 21.3069
+    lon: -157.8583
+    bundle_slug: "goes"
+  - name: "Santiago, Chile"
+    lat: -33.4489
+    lon: -70.6693
+    bundle_slug: "iss"
+  - name: "Reykjavik, Iceland"
+    lat: 64.1466
+    lon: -21.9426
+    bundle_slug: "noaa"
+  - name: "Cape Town, South Africa"
+    lat: -33.9249
+    lon: 18.4241
+    bundle_slug: "resource"
+  - name: "Vancouver, Canada"
+    lat: 49.2827
+    lon: -123.1207
+    bundle_slug: "weather"
+  - name: "Madrid, Spain"
+    lat: 40.4168
+    lon: -3.7038
+    bundle_slug: "galileo"
+  - name: "Nairobi, Kenya"
+    lat: -1.2921
+    lon: 36.8219
+    bundle_slug: "gnss"
+  - name: "Lisbon, Portugal"
+    lat: 38.7223
+    lon: -9.1393
+    bundle_slug: "gps-ops"
+  - name: "Helsinki, Finland"
+    lat: 60.1699
+    lon: 24.9384
+    bundle_slug: "noaa-apt"

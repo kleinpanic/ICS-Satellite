@@ -1,0 +1,434 @@
+version: 1
+repo_url: "https://github.com/kleinpanic/ICS-Satellite"
+site:
+  title: "Satellite Pass Calendar"
+  description: "Subscribe to satellite overhead pass calendars by location and bundle."
+
+defaults:
+  horizon_days: 14
+  tle_cache_hours: 12
+  refresh_interval_hours: 6
+  include_if_peak_elevation_deg: 30
+  label_overhead_if_peak_elevation_deg: 80
+
+# GitHub usernames allowed to submit location requests via IssueOps
+allowed_requesters:
+  - kleinpanic
+
+# Defaults for the location request pipeline
+request_defaults:
+  slug_precision_decimals: 4
+  horizon_days: 14
+  max_satellites_per_request: 12
+
+request_db_path: "data/requests.sqlite"
+
+# Curated defaults shown by the site.
+# "locations" is still accepted for compatibility, but "featured_locations" is preferred.
+featured_locations:
+  - slug: "new-york"
+    name: "New York, NY"
+    lat: 40.7128
+    lon: -74.0060
+  - slug: "los-angeles"
+    name: "Los Angeles, CA"
+    lat: 34.0522
+    lon: -118.2437
+  - slug: "chicago"
+    name: "Chicago, IL"
+    lat: 41.8781
+    lon: -87.6298
+  - slug: "seattle"
+    name: "Seattle, WA"
+    lat: 47.6062
+    lon: -122.3321
+  - slug: "san-francisco"
+    name: "San Francisco, CA"
+    lat: 37.7749
+    lon: -122.4194
+  - slug: "washington-dc"
+    name: "Washington, DC"
+    lat: 38.9072
+    lon: -77.0369
+  - slug: "miami"
+    name: "Miami, FL"
+    lat: 25.7617
+    lon: -80.1918
+  - slug: "denver"
+    name: "Denver, CO"
+    lat: 39.7392
+    lon: -104.9903
+  - slug: "dallas"
+    name: "Dallas, TX"
+    lat: 32.7767
+    lon: -96.7970
+  - slug: "atlanta"
+    name: "Atlanta, GA"
+    lat: 33.7490
+    lon: -84.3880
+  - slug: "boston"
+    name: "Boston, MA"
+    lat: 42.3601
+    lon: -71.0589
+  - slug: "phoenix"
+    name: "Phoenix, AZ"
+    lat: 33.4484
+    lon: -112.0740
+  - slug: "toronto"
+    name: "Toronto, Canada"
+    lat: 43.6532
+    lon: -79.3832
+  - slug: "mexico-city"
+    name: "Mexico City, Mexico"
+    lat: 19.4326
+    lon: -99.1332
+  - slug: "sao-paulo"
+    name: "Sao Paulo, Brazil"
+    lat: -23.5558
+    lon: -46.6396
+  - slug: "buenos-aires"
+    name: "Buenos Aires, Argentina"
+    lat: -34.6037
+    lon: -58.3816
+  - slug: "london"
+    name: "London, UK"
+    lat: 51.5074
+    lon: -0.1278
+  - slug: "paris"
+    name: "Paris, France"
+    lat: 48.8566
+    lon: 2.3522
+  - slug: "berlin"
+    name: "Berlin, Germany"
+    lat: 52.5200
+    lon: 13.4050
+  - slug: "rome"
+    name: "Rome, Italy"
+    lat: 41.9028
+    lon: 12.4964
+  - slug: "tokyo"
+    name: "Tokyo, Japan"
+    lat: 35.6895
+    lon: 139.6917
+  - slug: "seoul"
+    name: "Seoul, South Korea"
+    lat: 37.5665
+    lon: 126.9780
+  - slug: "beijing"
+    name: "Beijing, China"
+    lat: 39.9042
+    lon: 116.4074
+  - slug: "shanghai"
+    name: "Shanghai, China"
+    lat: 31.2304
+    lon: 121.4737
+  - slug: "singapore"
+    name: "Singapore"
+    lat: 1.3521
+    lon: 103.8198
+  - slug: "sydney"
+    name: "Sydney, Australia"
+    lat: -33.8688
+    lon: 151.2093
+  - slug: "dubai"
+    name: "Dubai, UAE"
+    lat: 25.2048
+    lon: 55.2708
+  - slug: "mumbai"
+    name: "Mumbai, India"
+    lat: 19.0760
+    lon: 72.8777
+  - slug: "cairo"
+    name: "Cairo, Egypt"
+    lat: 30.0444
+    lon: 31.2357
+  - slug: "johannesburg"
+    name: "Johannesburg, South Africa"
+    lat: -26.2041
+    lon: 28.0473
+
+# Optional: limit default feeds to a subset of bundles (defaults to all bundles).
+featured_bundles:
+  - "popular"
+  - "noaa-apt"
+  - "iss"
+  - "stations"
+  - "planets-all"
+  - "planet-mercury"
+  - "planet-venus"
+  - "planet-mars"
+  - "planet-jupiter"
+  - "planet-saturn"
+  - "planet-uranus"
+  - "planet-neptune"
+
+bundles:
+  - slug: "planets-all"
+    name: "All planets"
+    kind: "planetary"
+    planet_targets:
+      - "mercury"
+      - "venus"
+      - "mars"
+      - "jupiter"
+      - "saturn"
+      - "uranus"
+      - "neptune"
+
+  - slug: "planet-mercury"
+    name: "Mercury"
+    kind: "planetary"
+    planet_targets: ["mercury"]
+
+  - slug: "planet-venus"
+    name: "Venus"
+    kind: "planetary"
+    planet_targets: ["venus"]
+
+  - slug: "planet-mars"
+    name: "Mars"
+    kind: "planetary"
+    planet_targets: ["mars"]
+
+  - slug: "planet-jupiter"
+    name: "Jupiter"
+    kind: "planetary"
+    planet_targets: ["jupiter"]
+
+  - slug: "planet-saturn"
+    name: "Saturn"
+    kind: "planetary"
+    planet_targets: ["saturn"]
+
+  - slug: "planet-uranus"
+    name: "Uranus"
+    kind: "planetary"
+    planet_targets: ["uranus"]
+
+  - slug: "planet-neptune"
+    name: "Neptune"
+    kind: "planetary"
+    planet_targets: ["neptune"]
+
+  - slug: "popular"
+    name: "Popular"
+    norad_ids: [25544, 20580, 25338, 28654, 33591, 40069]
+    include_if_peak_elevation_deg: 20
+    label_overhead_if_peak_elevation_deg: 75
+
+  - slug: "stations"
+    name: "Space Stations"
+    celestrak_group: "stations"
+
+  - slug: "iss"
+    name: "ISS"
+    norad_ids: [25544]
+    include_if_peak_elevation_deg: 20
+    label_overhead_if_peak_elevation_deg: 75
+
+  - slug: "visual"
+    name: "100 Brightest"
+    celestrak_group: "visual"
+
+  - slug: "last-30-days"
+    name: "Last 30 Days"
+    celestrak_group: "last-30-days"
+    satellite_listing_limit: 400
+
+  - slug: "active"
+    name: "Active Satellites"
+    celestrak_group: "active"
+    satellite_listing_limit: 500
+
+  - slug: "analyst"
+    name: "Analyst"
+    celestrak_group: "analyst"
+    satellite_listing_limit: 400
+
+  - slug: "cosmos-1408-debris"
+    name: "COSMOS 1408 Debris"
+    celestrak_group: "cosmos-1408-debris"
+    satellite_listing_limit: 400
+
+  - slug: "fengyun-1c-debris"
+    name: "FENGYUN 1C Debris"
+    celestrak_group: "fengyun-1c-debris"
+    satellite_listing_limit: 400
+
+  - slug: "iridium-33-debris"
+    name: "Iridium 33 Debris"
+    celestrak_group: "iridium-33-debris"
+    satellite_listing_limit: 400
+
+  - slug: "cosmos-2251-debris"
+    name: "COSMOS 2251 Debris"
+    celestrak_group: "cosmos-2251-debris"
+    satellite_listing_limit: 400
+
+  - slug: "weather"
+    name: "Weather"
+    celestrak_group: "weather"
+
+  - slug: "noaa"
+    name: "NOAA"
+    celestrak_group: "noaa"
+
+  - slug: "noaa-apt"
+    name: "NOAA APT (15/18/19)"
+    norad_ids: [25338, 28654, 33591]
+    include_if_peak_elevation_deg: 25
+    label_overhead_if_peak_elevation_deg: 80
+
+  - slug: "goes"
+    name: "GOES"
+    celestrak_group: "goes"
+
+  - slug: "resource"
+    name: "Earth Resources"
+    celestrak_group: "resource"
+
+  - slug: "sarsat"
+    name: "SARSAT"
+    celestrak_group: "sarsat"
+
+  - slug: "dmc"
+    name: "Disaster Monitoring"
+    celestrak_group: "dmc"
+
+  - slug: "tdrss"
+    name: "TDRSS"
+    celestrak_group: "tdrss"
+
+  - slug: "argos"
+    name: "ARGOS"
+    celestrak_group: "argos"
+
+  - slug: "planet"
+    name: "Planet"
+    celestrak_group: "planet"
+
+  - slug: "spire"
+    name: "Spire"
+    celestrak_group: "spire"
+
+  - slug: "geo"
+    name: "Geosynchronous"
+    celestrak_group: "geo"
+    satellite_listing_limit: 400
+
+  - slug: "intelsat"
+    name: "Intelsat"
+    celestrak_group: "intelsat"
+
+  - slug: "ses"
+    name: "SES"
+    celestrak_group: "ses"
+
+  - slug: "eutelsat"
+    name: "Eutelsat"
+    celestrak_group: "eutelsat"
+
+  - slug: "telesat"
+    name: "Telesat"
+    celestrak_group: "telesat"
+
+  - slug: "starlink"
+    name: "Starlink"
+    celestrak_group: "starlink"
+    satellite_listing_limit: 500
+
+  - slug: "oneweb"
+    name: "OneWeb"
+    celestrak_group: "oneweb"
+    satellite_listing_limit: 500
+
+  - slug: "qianfan"
+    name: "Qianfan"
+    celestrak_group: "qianfan"
+    satellite_listing_limit: 500
+
+  - slug: "hulianwang"
+    name: "Hulianwang"
+    celestrak_group: "hulianwang"
+    satellite_listing_limit: 500
+
+  - slug: "kuiper"
+    name: "Kuiper"
+    celestrak_group: "kuiper"
+    satellite_listing_limit: 500
+
+  - slug: "iridium"
+    name: "Iridium"
+    celestrak_group: "iridium"
+
+  - slug: "iridium-next"
+    name: "Iridium NEXT"
+    celestrak_group: "iridium-next"
+
+  - slug: "orbcomm"
+    name: "Orbcomm"
+    celestrak_group: "orbcomm"
+
+  - slug: "globalstar"
+    name: "Globalstar"
+    celestrak_group: "globalstar"
+
+  - slug: "amateur"
+    name: "Amateur"
+    celestrak_group: "amateur"
+
+  - slug: "satnogs"
+    name: "SatNOGS"
+    celestrak_group: "satnogs"
+
+  - slug: "gnss"
+    name: "GNSS"
+    celestrak_group: "gnss"
+
+  - slug: "gps-ops"
+    name: "GPS Operational"
+    celestrak_group: "gps-ops"
+
+  - slug: "glo-ops"
+    name: "GLONASS Operational"
+    celestrak_group: "glo-ops"
+
+  - slug: "galileo"
+    name: "Galileo"
+    celestrak_group: "galileo"
+
+  - slug: "beidou"
+    name: "Beidou"
+    celestrak_group: "beidou"
+
+  - slug: "sbas"
+    name: "SBAS"
+    celestrak_group: "sbas"
+
+  - slug: "cubesat"
+    name: "CubeSats"
+    celestrak_group: "cubesat"
+
+  - slug: "science"
+    name: "Science"
+    celestrak_group: "science"
+
+  - slug: "geodetic"
+    name: "Geodetic"
+    celestrak_group: "geodetic"
+
+  - slug: "engineering"
+    name: "Engineering"
+    celestrak_group: "engineering"
+
+  - slug: "education"
+    name: "Education"
+    celestrak_group: "education"
+
+  - slug: "military"
+    name: "Military"
+    celestrak_group: "military"
+
+  - slug: "radar"
+    name: "Radar Calibration"
+    celestrak_group: "radar"

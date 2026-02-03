@@ -1,0 +1,52 @@
+name: Release Archives
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up venv
+        run: python -m venv .venv
+
+      - name: Install dependencies
+        run: |
+          .venv/bin/pip install -U pip
+          .venv/bin/pip install -e .
+
+      - name: Build site
+        run: .venv/bin/satpass build --config config/config.yaml --out site/
+
+      - name: Create archives
+        run: |
+          tar -czf site.tar.gz site
+          zip -r site.zip site
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-archives
+          path: |
+            site.zip
+            site.tar.gz
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            site.zip
+            site.tar.gz

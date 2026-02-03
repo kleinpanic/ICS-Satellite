@@ -1,0 +1,124 @@
+name: Location request
+description: Request a new location feed
+title: "Location request: "
+labels: ["location-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to request a satellite or planetary pass feed for a custom location.
+        The easiest way is to use the website at the Pages URL, which will
+        prefill all fields automatically.
+
+        The request is processed from the JSON payload below. The bundle slug
+        must match the JSON bundle_slug; the automation uses the JSON payload as
+        the source of truth.
+
+        Available bundles (from config):
+        <!-- BUNDLE_LIST_START -->
+        - planets-all
+        - planet-mercury
+        - planet-venus
+        - planet-mars
+        - planet-jupiter
+        - planet-saturn
+        - planet-uranus
+        - planet-neptune
+        - popular
+        - stations
+        - iss
+        - visual
+        - last-30-days
+        - active
+        - analyst
+        - cosmos-1408-debris
+        - fengyun-1c-debris
+        - iridium-33-debris
+        - cosmos-2251-debris
+        - weather
+        - noaa
+        - noaa-apt
+        - goes
+        - resource
+        - sarsat
+        - dmc
+        - tdrss
+        - argos
+        - planet
+        - spire
+        - geo
+        - intelsat
+        - ses
+        - eutelsat
+        - telesat
+        - starlink
+        - oneweb
+        - qianfan
+        - hulianwang
+        - kuiper
+        - iridium
+        - iridium-next
+        - orbcomm
+        - globalstar
+        - amateur
+        - satnogs
+        - gnss
+        - gps-ops
+        - glo-ops
+        - galileo
+        - beidou
+        - sbas
+        - cubesat
+        - science
+        - geodetic
+        - engineering
+        - education
+        - military
+        - radar
+        <!-- BUNDLE_LIST_END -->
+  - type: input
+    id: name
+    attributes:
+      label: Location name
+      description: Optional display name for the location.
+      placeholder: City, Country
+  - type: input
+    id: lat
+    attributes:
+      label: Latitude
+      description: Decimal degrees (e.g., 47.6062).
+      placeholder: "47.6062"
+    validations:
+      required: true
+  - type: input
+    id: lon
+    attributes:
+      label: Longitude
+      description: Decimal degrees (e.g., -122.3321).
+      placeholder: "-122.3321"
+    validations:
+      required: true
+  - type: input
+    id: bundle_slug
+    attributes:
+      label: Bundle slug
+      description: Must match the JSON payload bundle_slug.
+      placeholder: popular
+    validations:
+      required: true
+  - type: textarea
+    id: payload
+    attributes:
+      label: Request payload (JSON)
+      description: |
+        Machine-readable JSON payload. This is auto-filled when using the website.
+        Do not edit manually unless you know what you are doing. The automation
+        uses this payload as the source of truth.
+      placeholder: '{"version": "1", "lat": 47.6062, "lon": -122.3321, "bundle_slug": "popular", "selected_norad_ids": []}'
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Anything else the maintainer should know.

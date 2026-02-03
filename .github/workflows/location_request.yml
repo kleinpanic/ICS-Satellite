@@ -1,0 +1,818 @@
+name: Process Location Request
+
+on:
+  issues:
+    types: [opened, edited, labeled]
+
+permissions:
+  contents: write
+  issues: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "location-request"
+  cancel-in-progress: false
+
+jobs:
+  process-request:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.labels.*.name, 'location-request') || contains(github.event.issue.body, 'Request payload (JSON)')
+    outputs:
+      valid: ${{ steps.validate.outputs.valid }}
+      existing: ${{ steps.validate.outputs.existing }}
+      slug: ${{ steps.validate.outputs.slug }}
+      feed_path: ${{ steps.validate.outputs.feed_path }}
+      request_key: ${{ steps.validate.outputs.request_key }}
+      bundle_mismatch: ${{ steps.validate.outputs.bundle_mismatch }}
+      bundle_form: ${{ steps.validate.outputs.bundle_form }}
+      bundle_payload: ${{ steps.validate.outputs.bundle_slug }}
+      no_change: ${{ steps.persist.outputs.no_change }}
+    steps:
+      - name: Ensure IssueOps labels + mark processing
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = [
+              { name: "location-request", color: "0e8a16", description: "Location request issue" },
+              { name: "processing", color: "fbca04", description: "IssueOps is processing this request" },
+              { name: "processed", color: "0e8a16", description: "IssueOps completed successfully" },
+              { name: "failed", color: "b60205", description: "IssueOps failed to process the request" },
+            ];
+
+            for (const label of labels) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                });
+              } catch (error) {
+                if (error.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    name: label.name,
+                    color: label.color,
+                    description: label.description,
+                  });
+                } else {
+                  throw error;
+                }
+              }
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ["location-request", "processing"],
+            });
+
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: "failed",
+            }).catch(() => {});
+
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: "processed",
+            }).catch(() => {});
+
+            if (["opened", "edited", "labeled"].includes(context.payload.action)) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: "Processing location request... I will update this issue when the request is validated and deployed.",
+              });
+            }
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up venv
+        run: python -m venv .venv
+
+      - name: Install dependencies
+        run: |
+          .venv/bin/pip install -U pip
+          .venv/bin/pip install -e .
+
+      - name: Check allowlist
+        id: check-allowlist
+        run: |
+          REQUESTER="${{ github.event.issue.user.login }}"
+          echo "Requester: $REQUESTER"
+          ALLOWED=$(.venv/bin/python - << 'PYEOF'
+          import yaml
+          from pathlib import Path
+
+          config = yaml.safe_load(Path('config/config.yaml').read_text())
+          allowed = config.get('allowed_requesters', [])
+          requester = "${{ github.event.issue.user.login }}"
+
+          if not allowed:
+              print("true")
+          else:
+              print("true" if requester in allowed else "false")
+          PYEOF
+          )
+          echo "allowed=$ALLOWED" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Reject unauthorized requester
+        if: steps.check-allowlist.outputs.allowed != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `Sorry @${context.actor}, you are not on the allowlist for location requests. Please contact the repository owner to be added.`
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed',
+              state_reason: 'not_planned'
+            });
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ["failed"],
+            });
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: "processing",
+            }).catch(() => {});
+
+      - name: Extract and validate payload
+        if: steps.check-allowlist.outputs.allowed == 'true'
+        id: validate
+        run: |
+          .venv/bin/python - << 'PYEOF'
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+          from datetime import datetime, timezone
+          output_path = os.environ["GITHUB_OUTPUT"]
+
+          def write_output(**kwargs: str) -> None:
+              with open(output_path, "a") as f:
+                  for key, value in kwargs.items():
+                      if value is None:
+                          continue
+                      f.write(f"{key}={value}\n")
+
+          def fail(message: str) -> None:
+              print(f"::error::{message}")
+              write_output(
+                  valid="false",
+                  existing="false",
+                  bundle_mismatch="false",
+                  error_message=message,
+              )
+              raise SystemExit(0)
+
+          try:
+              from satpass.config import RequestedLocation, load_config, resolve_featured_locations
+              from satpass.requests_db import (
+                  canonicalize_selection,
+                  default_selection,
+                  ensure_location_keys,
+                  get_request_by_key,
+                  get_request_by_signature,
+                  init_db,
+                  normalize_norad_ids,
+              )
+              from satpass.slug import compute_location_slug, compute_request_feed_slug
+              from satpass.tle import fetch_tles
+
+              body = os.environ.get("ISSUE_BODY", "")
+
+              payload_match = re.search(
+                  r"### Request payload \(JSON\)\s*\n\n```?\s*([\s\S]*?)\s*```?\s*(?=\n###|\Z)",
+                  body,
+              )
+
+              if not payload_match:
+                  payload_match = re.search(
+                      r"### Request payload \(JSON\)\s*\n\n([\s\S]*?)(?=\n###|\Z)",
+                      body,
+                  )
+
+              if not payload_match:
+                  fail("Could not find payload in issue body")
+
+              payload_text = payload_match.group(1).strip()
+              if payload_text.startswith("```"):
+                  payload_text = payload_text[3:]
+              if payload_text.endswith("```"):
+                  payload_text = payload_text[:-3]
+              payload_text = payload_text.strip()
+
+              try:
+                  payload = json.loads(payload_text)
+              except json.JSONDecodeError as exc:
+                  fail(f"Invalid JSON payload: {exc}")
+
+              lat = payload.get("lat")
+              lon = payload.get("lon")
+              bundle_slug = payload.get("bundle_slug")
+              name = payload.get("name") or ""
+              selected_ids = payload.get("selected_norad_ids") or []
+              payload_slug = payload.get("slug")
+
+              if lat is None or lon is None:
+                  fail("Missing lat or lon in payload")
+
+              try:
+                  lat = float(lat)
+                  lon = float(lon)
+              except (TypeError, ValueError):
+                  fail("lat and lon must be numbers")
+
+              if not (-90 <= lat <= 90):
+                  fail(f"lat must be between -90 and 90, got {lat}")
+
+              if not (-180 <= lon <= 180):
+                  fail(f"lon must be between -180 and 180, got {lon}")
+
+              if not bundle_slug:
+                  fail("Missing bundle_slug in payload")
+
+              if not isinstance(selected_ids, list):
+                  fail("selected_norad_ids must be a list")
+
+              if payload_slug is not None:
+                  if not isinstance(payload_slug, str):
+                      fail("slug must be a string")
+                  try:
+                      payload_slug = RequestedLocation.validate_slug(payload_slug)
+                  except ValueError as exc:
+                      fail(f"Invalid slug: {exc}")
+
+              config = load_config(Path("config/config.yaml"))
+              bundle = next((b for b in config.bundles if b.slug == bundle_slug), None)
+              if not bundle:
+                  fail(f"Unknown bundle: {bundle_slug}")
+
+              precision = config.request_defaults.slug_precision_decimals
+              max_sats = config.request_defaults.max_satellites_per_request
+              selected_ids = normalize_norad_ids(selected_ids)
+
+              if bundle.kind == "planetary":
+                  if selected_ids:
+                      fail("selected_norad_ids must be empty for planetary bundles")
+                  selected_ids = []
+                  available_ids = []
+              else:
+                  if selected_ids and len(selected_ids) > max_sats:
+                      fail(f"Too many satellites selected (max {max_sats})")
+
+                  available_ids = list(bundle.norad_ids)
+                  if not selected_ids:
+                      if not available_ids:
+                          tles = fetch_tles(
+                              cache_dir=Path("state") / "tle",
+                              ttl_hours=config.defaults.tle_cache_hours,
+                              groups=[bundle.celestrak_group] if bundle.celestrak_group else [],
+                              norad_ids=bundle.norad_ids,
+                          )
+                          available_ids = [tle.norad_id for tle in tles]
+                      selected_ids = default_selection(available_ids, max_sats)
+
+                  if selected_ids:
+                      if not available_ids:
+                          tles = fetch_tles(
+                              cache_dir=Path("state") / "tle",
+                              ttl_hours=config.defaults.tle_cache_hours,
+                              groups=[bundle.celestrak_group] if bundle.celestrak_group else [],
+                              norad_ids=bundle.norad_ids,
+                          )
+                          available_ids = [tle.norad_id for tle in tles]
+                      missing = [
+                          norad_id for norad_id in selected_ids if norad_id not in set(available_ids)
+                      ]
+                      if missing:
+                          fail(
+                              "Selected NORAD IDs are not in bundle "
+                              f"{bundle_slug}: {missing}"
+                          )
+
+                  selected_ids = canonicalize_selection(selected_ids, available_ids)
+
+              bundle_form = None
+              bundle_match = re.search(r"### Bundle slug\s*\n\n([^\n]+)", body)
+              if not bundle_match:
+                  bundle_match = re.search(r"### Bundle\s*\n\n([^\n]+)", body)
+              if bundle_match:
+                  bundle_form = bundle_match.group(1).strip()
+
+              bundle_mismatch = bool(
+                  bundle_form and bundle_form != bundle_slug and bundle_slug is not None
+              )
+
+              featured_locations = {
+                  loc.slug: loc for loc in resolve_featured_locations(config)
+              }
+              if payload_slug and payload_slug in featured_locations:
+                  featured = featured_locations[payload_slug]
+                  location_slug = featured.slug
+                  lat = float(featured.lat)
+                  lon = float(featured.lon)
+                  if not name:
+                      name = featured.name
+              else:
+                  location_slug = payload_slug or compute_location_slug(lat, lon, precision)
+              location_key = compute_location_slug(lat, lon, precision)
+              feed_slug = compute_request_feed_slug(
+                  location_slug=location_slug,
+                  bundle_slug=bundle_slug,
+                  selected_norad_ids=selected_ids,
+              )
+
+              db_path = Path(config.request_db_path)
+              conn = init_db(db_path)
+              try:
+                  ensure_location_keys(conn, precision)
+                  existing = get_request_by_signature(
+                      conn,
+                      location_key=location_key,
+                      bundle_slug=bundle_slug,
+                      selected_norad_ids=selected_ids,
+                  )
+                  if not existing:
+                      existing = get_request_by_key(conn, feed_slug)
+              finally:
+                  conn.close()
+
+              requested_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+              if existing:
+                  write_output(
+                      valid="true",
+                      existing="true",
+                      slug=existing.location_slug,
+                      feed_path=f"feeds/{existing.request_key}.ics",
+                      request_key=existing.request_key,
+                      db_path=db_path.as_posix(),
+                      bundle_slug=bundle_slug,
+                      bundle_form=bundle_form,
+                      bundle_mismatch=str(bundle_mismatch).lower(),
+                      error_message="",
+                  )
+                  raise SystemExit(0)
+
+              write_output(
+                  valid="true",
+                  existing="false",
+                  slug=location_slug,
+                  feed_path=f"feeds/{feed_slug}.ics",
+                  request_key=feed_slug,
+                  db_path=db_path.as_posix(),
+                  lat=str(lat),
+                  lon=str(lon),
+                  bundle_slug=bundle_slug,
+                  name=name,
+                  selected_norad_ids=json.dumps(selected_ids),
+                  requested_at=requested_at,
+                  bundle_form=bundle_form,
+                  bundle_mismatch=str(bundle_mismatch).lower(),
+                  error_message="",
+              )
+          except Exception as exc:
+              fail(f"Unexpected error while validating payload: {exc}")
+          PYEOF
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          REQUESTED_BY: ${{ github.event.issue.user.login }}
+
+      - name: Comment on bundle mismatch
+        if: steps.validate.outputs.bundle_mismatch == 'true'
+        uses: actions/github-script@v7
+        env:
+          BUNDLE_FORM: ${{ steps.validate.outputs.bundle_form }}
+          BUNDLE_PAYLOAD: ${{ steps.validate.outputs.bundle_slug }}
+        with:
+          script: |
+            const formBundle = process.env.BUNDLE_FORM || "unknown";
+            const payloadBundle = process.env.BUNDLE_PAYLOAD || "unknown";
+            const body = [
+              "Bundle selection mismatch detected. The request will proceed using the JSON payload.",
+              "",
+              `- Form bundle: \`${formBundle}\``,
+              `- Payload bundle_slug: \`${payloadBundle}\``,
+              "",
+              "If you opened this issue manually, please update the bundle slug to match the JSON payload.",
+            ].join("\n");
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      - name: Comment on existing request
+        if: steps.validate.outputs.existing == 'true'
+        uses: actions/github-script@v7
+        env:
+          FEED_PATH: ${{ steps.validate.outputs.feed_path }}
+          REQUEST_KEY: ${{ steps.validate.outputs.request_key }}
+        with:
+          script: |
+            const feedPath = process.env.FEED_PATH;
+            const requestKey = process.env.REQUEST_KEY;
+            const pagesUrl = `https://${context.repo.owner}.github.io/${context.repo.repo}`;
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const httpsUrl = `${pagesUrl}/${feedPath}`;
+            const webcalUrl = httpsUrl.replace('https://', 'webcal://');
+
+            const body = [
+              "This request already exists.",
+              "",
+              `- Request key: \`${requestKey}\``,
+              `- Feed path: \`${feedPath}\``,
+              "",
+              "Subscribe using these URLs:",
+              `- HTTPS: \`${httpsUrl}\``,
+              `- webcal: \`${webcalUrl}\``,
+            ].join("\n");
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed',
+              state_reason: 'completed'
+            });
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ["processed"],
+            });
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: "processing",
+            }).catch(() => {});
+
+      - name: Persist request DB
+        if: steps.validate.outputs.valid == 'true' && steps.validate.outputs.existing != 'true'
+        id: persist
+        env:
+          REQUEST_LAT: ${{ steps.validate.outputs.lat }}
+          REQUEST_LON: ${{ steps.validate.outputs.lon }}
+          REQUEST_BUNDLE: ${{ steps.validate.outputs.bundle_slug }}
+          REQUEST_NAME: ${{ steps.validate.outputs.name }}
+          REQUEST_SELECTED_IDS: ${{ steps.validate.outputs.selected_norad_ids }}
+          REQUESTED_BY: ${{ github.event.issue.user.login }}
+          REQUESTED_AT: ${{ steps.validate.outputs.requested_at }}
+          REQUEST_SLUG: ${{ steps.validate.outputs.slug }}
+          REQUEST_KEY: ${{ steps.validate.outputs.request_key }}
+          REQUEST_DB_PATH: ${{ steps.validate.outputs.db_path }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          success=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin "$DEFAULT_BRANCH"
+            git checkout "$DEFAULT_BRANCH"
+            git reset --hard "origin/$DEFAULT_BRANCH"
+            .venv/bin/python scripts/issueops_persist_request.py
+            git add "$REQUEST_DB_PATH"
+            if git diff --cached --quiet; then
+              echo "No DB changes to commit."
+              echo "no_change=true" >> "$GITHUB_OUTPUT"
+              success=1
+              break
+            fi
+            git commit -m "feat: add location request ${REQUEST_SLUG}
+
+          Requested by @${{ github.event.issue.user.login }}
+          Issue: #${{ github.event.issue.number }}"
+            if git push origin "HEAD:$DEFAULT_BRANCH"; then
+              echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              success=1
+              break
+            fi
+            echo "Push failed, retrying..."
+            sleep 2
+          done
+          if [ "$success" -ne 1 ]; then
+            echo "Failed to persist request DB after multiple retries."
+            exit 1
+          fi
+
+      - name: Comment on already persisted request
+        if: steps.persist.outputs.no_change == 'true'
+        uses: actions/github-script@v7
+        env:
+          FEED_PATH: ${{ steps.validate.outputs.feed_path }}
+          REQUEST_KEY: ${{ steps.validate.outputs.request_key }}
+        with:
+          script: |
+            const feedPath = process.env.FEED_PATH;
+            const requestKey = process.env.REQUEST_KEY;
+            const pagesUrl = `https://${context.repo.owner}.github.io/${context.repo.repo}`;
+            const httpsUrl = `${pagesUrl}/${feedPath}`;
+            const webcalUrl = httpsUrl.replace('https://', 'webcal://');
+
+            const body = [
+              "This request already exists.",
+              "",
+              `- Request key: \`${requestKey}\``,
+              `- Feed path: \`${feedPath}\``,
+              "",
+              "Subscribe using these URLs:",
+              `- HTTPS: \`${httpsUrl}\``,
+              `- webcal: \`${webcalUrl}\``,
+            ].join("\n");
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ["processed"],
+            });
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: "processing",
+            }).catch(() => {});
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed',
+              state_reason: 'completed'
+            });
+
+      - name: Build site
+        id: build
+        if: steps.validate.outputs.valid == 'true' && steps.validate.outputs.existing != 'true' && steps.persist.outputs.no_change != 'true'
+        run: .venv/bin/satpass build --config config/config.yaml --out site/
+
+      - name: Upload Pages artifact
+        if: steps.validate.outputs.valid == 'true' && steps.validate.outputs.existing != 'true' && steps.persist.outputs.no_change != 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Comment on validation failure
+        if: steps.check-allowlist.outputs.allowed == 'true' && steps.validate.outputs.valid != 'true'
+        uses: actions/github-script@v7
+        env:
+          ERROR_MESSAGE: ${{ steps.validate.outputs.error_message }}
+        with:
+          script: |
+            const detail = process.env.ERROR_MESSAGE;
+            const body = [
+              "Failed to process the location request. Please check the payload JSON and try again.",
+              detail ? `Details: ${detail}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n");
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ["failed"],
+            });
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: "processing",
+            }).catch(() => {});
+
+      - name: Report persistence failure
+        if: failure() && steps.persist.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: "Persist request DB failed. Please check the Actions logs for the Persist request DB step and retry in a few minutes."
+            });
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ["failed"],
+            });
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: "processing",
+            }).catch(() => {});
+
+      - name: Report build failure
+        if: failure() && steps.build.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: "Request persisted, but site build failed. Please check the Actions logs and retry."
+            });
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ["failed"],
+            });
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              name: "processing",
+            }).catch(() => {});
+
+  deploy:
+    needs: process-request
+    if: needs.process-request.outputs.valid == 'true' && needs.process-request.outputs.existing != 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  notify:
+    needs: [process-request, deploy]
+    if: always() && needs.process-request.result != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment on success or failure
+        uses: actions/github-script@v7
+        env:
+          VALID: ${{ needs.process-request.outputs.valid }}
+          EXISTING: ${{ needs.process-request.outputs.existing }}
+          FEED_PATH: ${{ needs.process-request.outputs.feed_path }}
+          REQUEST_KEY: ${{ needs.process-request.outputs.request_key }}
+          PROCESS_RESULT: ${{ needs.process-request.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          NO_CHANGE: ${{ needs.process-request.outputs.no_change }}
+        with:
+          script: |
+            const valid = process.env.VALID === "true";
+            const existing = process.env.EXISTING === "true";
+            const noChange = process.env.NO_CHANGE === "true";
+            const processResult = process.env.PROCESS_RESULT;
+            const deployResult = process.env.DEPLOY_RESULT;
+            const feedPath = process.env.FEED_PATH;
+            const requestKey = process.env.REQUEST_KEY;
+            const pagesUrl = `https://${context.repo.owner}.github.io/${context.repo.repo}`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            if (!valid || existing || noChange) {
+              return;
+            }
+
+            const issue = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            };
+            const safe = async (label, fn) => {
+              try {
+                await fn();
+              } catch (error) {
+                console.log(`${label} failed: ${error.message}`);
+              }
+            };
+
+            if (processResult !== "success") {
+              await safe("comment", () =>
+                github.rest.issues.createComment({
+                  ...issue,
+                  body: [
+                    "Location request processing failed. Please review the Actions logs for details.",
+                    `Actions run: ${runUrl}`,
+                  ].join("\n"),
+                })
+              );
+              await safe("label failed", () =>
+                github.rest.issues.addLabels({ ...issue, labels: ["failed"] })
+              );
+              await safe("remove processing label", () =>
+                github.rest.issues.removeLabel({ ...issue, name: "processing" })
+              );
+              return;
+            }
+
+            if (deployResult !== "success") {
+              await safe("comment", () =>
+                github.rest.issues.createComment({
+                  ...issue,
+                  body: [
+                    "Request persisted, but Pages deploy failed. Please check the Actions logs and retry.",
+                    `Actions run: ${runUrl}`,
+                  ].join("\n"),
+                })
+              );
+              await safe("label failed", () =>
+                github.rest.issues.addLabels({ ...issue, labels: ["failed"] })
+              );
+              await safe("remove processing label", () =>
+                github.rest.issues.removeLabel({ ...issue, name: "processing" })
+              );
+              return;
+            }
+
+            const httpsUrl = `${pagesUrl}/${feedPath}`;
+            const webcalUrl = httpsUrl.replace("https://", "webcal://");
+            const body = [
+              "Your location feed has been generated and deployed!",
+              "",
+              "**Feed details:**",
+              `- Request key: \`${requestKey}\``,
+              `- Feed path: \`${feedPath}\``,
+              "",
+              "**Feed URLs:**",
+              `- HTTPS: \`${httpsUrl}\``,
+              `- webcal: \`${webcalUrl}\``,
+              "",
+              "**How to subscribe:**",
+              `- **Apple Calendar**: Open ${webcalUrl} or copy the webcal URL`,
+              '- **Google Calendar / Other**: Use "Subscribe by URL" with the HTTPS link',
+              "",
+              `**Site:** ${pagesUrl}`,
+              `**Deploy run:** ${runUrl}`,
+              "",
+              "The feed will be automatically regenerated every 6 hours with updated pass predictions.",
+            ].join("\n");
+
+            await safe("comment", () =>
+              github.rest.issues.createComment({
+                ...issue,
+                body,
+              })
+            );
+
+            await safe("label processed", () =>
+              github.rest.issues.addLabels({ ...issue, labels: ["processed"] })
+            );
+            await safe("remove processing label", () =>
+              github.rest.issues.removeLabel({ ...issue, name: "processing" })
+            );
+
+            await safe("close issue", () =>
+              github.rest.issues.update({
+                ...issue,
+                state: "closed",
+                state_reason: "completed",
+              })
+            );

@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools==75.9.0", "wheel==0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "satpass"
+version = "1.11.0"
+description = "Generate iCalendar feeds for satellite passes."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Repo Owner" }
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "License :: OSI Approved :: MIT License",
+]
+dependencies = [
+  "skyfield==1.54",
+  "sgp4==2.25",
+  "icalendar==6.3.2",
+  "PyYAML==6.0.3",
+  "requests==2.32.5",
+  "pydantic==2.12.5",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.0.2",
+  "ruff==0.14.14",
+  "mypy==1.19.1",
+  "types-PyYAML==6.0.12.20241230",
+  "types-requests==2.32.4.20250913",
+]
+
+[project.scripts]
+satpass = "satpass.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+satpass = ["assets/site/*"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["skyfield", "skyfield.*", "icalendar", "icalendar.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+addopts = "-vv --color=yes -ra --durations=10 --showlocals"
