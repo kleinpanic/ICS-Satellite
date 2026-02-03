@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.12.0 - 2026-02-03
+
+### Changed
+- IssueOps now dispatches the Pages workflow after persisting a request for faster deployments
+- Issue template and docs now describe the dispatch-driven Pages deploy timing
+
+### Fixed
+- Restored reliable Pages redeploys after IssueOps persistence by triggering `pages.yml`
+
 ## 1.11.0 - 2026-02-02
 
 ### Added

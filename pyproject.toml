@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "satpass"
-version = "1.11.1"
+version = "1.12.0"
 description = "Generate iCalendar feeds for satellite passes."
 readme = "README.md"
 requires-python = ">=3.11"
