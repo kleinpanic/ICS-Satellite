@@ -2,13 +2,11 @@ name: Process Location Request
 
 on:
   issues:
-    types: [opened, edited, labeled]
+    types: [opened, labeled]
 
 permissions:
   contents: write
   issues: write
-  pages: write
-  id-token: write
 
 concurrency:
   group: "location-request"
@@ -17,6 +15,7 @@ concurrency:
 jobs:
   process-request:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: contains(github.event.issue.labels.*.name, 'location-request') || contains(github.event.issue.body, 'Request payload (JSON)')
     outputs:
       valid: ${{ steps.validate.outputs.valid }}
@@ -83,12 +82,12 @@ jobs:
               name: "processed",
             }).catch(() => {});
 
-            if (["opened", "edited", "labeled"].includes(context.payload.action)) {
+            if (["opened", "labeled"].includes(context.payload.action)) {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: "Processing location request... I will update this issue when the request is validated and deployed.",
+                body: "Processing location request... I will update this issue when the request is validated and persisted. GitHub Pages deployment happens separately.",
               });
             }
 
@@ -586,17 +585,6 @@ jobs:
               state_reason: 'completed'
             });
 
-      - name: Build site
-        id: build
-        if: steps.validate.outputs.valid == 'true' && steps.validate.outputs.existing != 'true' && steps.persist.outputs.no_change != 'true'
-        run: .venv/bin/satpass build --config config/config.yaml --out site/
-
-      - name: Upload Pages artifact
-        if: steps.validate.outputs.valid == 'true' && steps.validate.outputs.existing != 'true' && steps.persist.outputs.no_change != 'true'
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-
       - name: Comment on validation failure
         if: steps.check-allowlist.outputs.allowed == 'true' && steps.validate.outputs.valid != 'true'
         uses: actions/github-script@v7
@@ -654,46 +642,11 @@ jobs:
               name: "processing",
             }).catch(() => {});
 
-      - name: Report build failure
-        if: failure() && steps.build.outcome == 'failure'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: "Request persisted, but site build failed. Please check the Actions logs and retry."
-            });
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              labels: ["failed"],
-            });
-            await github.rest.issues.removeLabel({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              name: "processing",
-            }).catch(() => {});
-
-  deploy:
-    needs: process-request
-    if: needs.process-request.outputs.valid == 'true' && needs.process-request.outputs.existing != 'true'
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-
   notify:
-    needs: [process-request, deploy]
+    needs: [process-request]
     if: always() && needs.process-request.result != 'skipped'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Comment on success or failure
         uses: actions/github-script@v7
@@ -703,7 +656,6 @@ jobs:
           FEED_PATH: ${{ needs.process-request.outputs.feed_path }}
           REQUEST_KEY: ${{ needs.process-request.outputs.request_key }}
           PROCESS_RESULT: ${{ needs.process-request.result }}
-          DEPLOY_RESULT: ${{ needs.deploy.result }}
           NO_CHANGE: ${{ needs.process-request.outputs.no_change }}
         with:
           script: |
@@ -711,11 +663,11 @@ jobs:
             const existing = process.env.EXISTING === "true";
             const noChange = process.env.NO_CHANGE === "true";
             const processResult = process.env.PROCESS_RESULT;
-            const deployResult = process.env.DEPLOY_RESULT;
             const feedPath = process.env.FEED_PATH;
             const requestKey = process.env.REQUEST_KEY;
             const pagesUrl = `https://${context.repo.owner}.github.io/${context.repo.repo}`;
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const pagesWorkflowUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/pages.yml`;
 
             if (!valid || existing || noChange) {
               return;
@@ -753,29 +705,10 @@ jobs:
               return;
             }
 
-            if (deployResult !== "success") {
-              await safe("comment", () =>
-                github.rest.issues.createComment({
-                  ...issue,
-                  body: [
-                    "Request persisted, but Pages deploy failed. Please check the Actions logs and retry.",
-                    `Actions run: ${runUrl}`,
-                  ].join("\n"),
-                })
-              );
-              await safe("label failed", () =>
-                github.rest.issues.addLabels({ ...issue, labels: ["failed"] })
-              );
-              await safe("remove processing label", () =>
-                github.rest.issues.removeLabel({ ...issue, name: "processing" })
-              );
-              return;
-            }
-
             const httpsUrl = `${pagesUrl}/${feedPath}`;
             const webcalUrl = httpsUrl.replace("https://", "webcal://");
             const body = [
-              "Your location feed has been generated and deployed!",
+              "Your location request has been persisted.",
               "",
               "**Feed details:**",
               `- Request key: \`${requestKey}\``,
@@ -784,15 +717,18 @@ jobs:
               "**Feed URLs:**",
               `- HTTPS: \`${httpsUrl}\``,
               `- webcal: \`${webcalUrl}\``,
+              "- Note: URLs may 404 until the next Pages deploy completes.",
               "",
               "**How to subscribe:**",
               `- **Apple Calendar**: Open ${webcalUrl} or copy the webcal URL`,
               '- **Google Calendar / Other**: Use "Subscribe by URL" with the HTTPS link',
               "",
               `**Site:** ${pagesUrl}`,
-              `**Deploy run:** ${runUrl}`,
+              `**IssueOps run:** ${runUrl}`,
+              `**Pages workflow:** ${pagesWorkflowUrl}`,
               "",
-              "The feed will be automatically regenerated every 6 hours with updated pass predictions.",
+              "The feed will be regenerated automatically every 6 hours with updated pass predictions.",
+              "If you need to retry after editing the issue, remove and re-add the `location-request` label.",
             ].join("\n");
 
             await safe("comment", () =>

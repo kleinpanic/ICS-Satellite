@@ -12,7 +12,11 @@ body:
 
         The request is processed from the JSON payload below. The bundle slug
         must match the JSON bundle_slug; the automation uses the JSON payload as
-        the source of truth.
+        the source of truth. Requests are persisted first; the Pages deploy runs
+        separately and may take a few minutes before feed URLs resolve.
+
+        To retry a request after editing, remove and re-add the
+        `location-request` label (or ask a maintainer to rerun the workflow).
 
         Available bundles (from config):
         <!-- BUNDLE_LIST_START -->
