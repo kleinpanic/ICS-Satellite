@@ -34,6 +34,13 @@ def test_location_request_not_triggered_on_edited() -> None:
     assert "edited" not in types
 
 
+def test_location_request_job_gates_on_label_name() -> None:
+    text = Path(".github/workflows/location_request.yml").read_text()
+    assert "github.event.label.name == 'location-request'" in text
+    assert "github.event.action == 'opened'" in text
+    assert "github.event.action == 'labeled'" in text
+
+
 def test_location_request_permissions_allow_dispatch() -> None:
     data = _load_workflow(".github/workflows/location_request.yml")
     permissions = data.get("permissions", {})
@@ -43,6 +50,7 @@ def test_location_request_permissions_allow_dispatch() -> None:
 
 def test_location_request_dispatches_pages_workflow() -> None:
     text = Path(".github/workflows/location_request.yml").read_text()
+    assert "listWorkflowRuns" in text
     assert "createWorkflowDispatch" in text
     assert "pages.yml" in text
 
@@ -50,3 +58,17 @@ def test_location_request_dispatches_pages_workflow() -> None:
 def test_pages_workflow_is_single_deployer() -> None:
     text = Path(".github/workflows/pages.yml").read_text()
     assert "actions/deploy-pages" in text
+
+
+def test_pages_workflow_has_catchup_dispatch() -> None:
+    text = Path(".github/workflows/pages.yml").read_text()
+    assert "chain_count" in text
+    assert "createWorkflowDispatch" in text
+    assert "MAX_CHAIN" in text
+
+
+def test_pages_workflow_permissions_allow_dispatch() -> None:
+    data = _load_workflow(".github/workflows/pages.yml")
+    permissions = data.get("permissions", {})
+    assert isinstance(permissions, dict)
+    assert permissions.get("actions") == "write"

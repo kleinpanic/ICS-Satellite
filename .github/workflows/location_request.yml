@@ -17,7 +17,9 @@ jobs:
   process-request:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: contains(github.event.issue.labels.*.name, 'location-request') || contains(github.event.issue.body, 'Request payload (JSON)')
+    if: >
+      (github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'location-request')) ||
+      (github.event.action == 'labeled' && github.event.label.name == 'location-request')
     outputs:
       valid: ${{ steps.validate.outputs.valid }}
       existing: ${{ steps.validate.outputs.existing }}
@@ -28,6 +30,9 @@ jobs:
       bundle_form: ${{ steps.validate.outputs.bundle_form }}
       bundle_payload: ${{ steps.validate.outputs.bundle_slug }}
       no_change: ${{ steps.persist.outputs.no_change }}
+      pages_dispatched: ${{ steps.pages-dispatch.outputs.dispatched }}
+      pages_active: ${{ steps.pages-dispatch.outputs.active }}
+      pages_active_run_url: ${{ steps.pages-dispatch.outputs.active_run_url }}
     steps:
       - name: Ensure IssueOps labels + mark processing
         uses: actions/github-script@v7
@@ -88,7 +93,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: "Processing location request... I will update this issue when the request is validated and persisted. A Pages deploy will be triggered after persistence.",
+                body: "Processing location request... I will update this issue when the request is validated and persisted. Pages deploys are coalesced to avoid backlog.",
               });
             }
 
@@ -533,8 +538,9 @@ jobs:
             exit 1
           fi
 
-      - name: Trigger Pages deploy (workflow_dispatch)
+      - name: Coalesce Pages deploy (workflow_dispatch)
         if: steps.persist.outcome == 'success' && steps.persist.outputs.no_change != 'true'
+        id: pages-dispatch
         uses: actions/github-script@v7
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -547,6 +553,22 @@ jobs:
               context.payload.repository?.default_branch ||
               process.env.DEFAULT_BRANCH ||
               "main";
+            const response = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id,
+              branch: ref,
+              per_page: 10,
+            });
+            const active = (response.data.workflow_runs || []).find(
+              (run) => run.status === "in_progress" || run.status === "queued"
+            );
+            if (active) {
+              core.setOutput("active", "true");
+              core.setOutput("active_run_url", active.html_url);
+              core.setOutput("dispatched", "false");
+              return;
+            }
             await github.rest.actions.createWorkflowDispatch({
               owner,
               repo,
@@ -554,8 +576,11 @@ jobs:
               ref,
               inputs: {
                 reason: "issueops-location-request",
+                chain_count: "0",
               },
             });
+            core.setOutput("active", "false");
+            core.setOutput("dispatched", "true");
 
       - name: Comment on already persisted request
         if: steps.persist.outputs.no_change == 'true'
@@ -682,11 +707,17 @@ jobs:
           REQUEST_KEY: ${{ needs.process-request.outputs.request_key }}
           PROCESS_RESULT: ${{ needs.process-request.result }}
           NO_CHANGE: ${{ needs.process-request.outputs.no_change }}
+          PAGES_DISPATCHED: ${{ needs.process-request.outputs.pages_dispatched }}
+          PAGES_ACTIVE: ${{ needs.process-request.outputs.pages_active }}
+          PAGES_ACTIVE_RUN_URL: ${{ needs.process-request.outputs.pages_active_run_url }}
         with:
           script: |
             const valid = process.env.VALID === "true";
             const existing = process.env.EXISTING === "true";
             const noChange = process.env.NO_CHANGE === "true";
+            const pagesDispatched = process.env.PAGES_DISPATCHED === "true";
+            const pagesActive = process.env.PAGES_ACTIVE === "true";
+            const pagesActiveUrl = process.env.PAGES_ACTIVE_RUN_URL;
             const processResult = process.env.PROCESS_RESULT;
             const feedPath = process.env.FEED_PATH;
             const requestKey = process.env.REQUEST_KEY;
@@ -732,6 +763,18 @@ jobs:
 
             const httpsUrl = `${pagesUrl}/${feedPath}`;
             const webcalUrl = httpsUrl.replace("https://", "webcal://");
+            let pagesStatus = null;
+            if (pagesDispatched) {
+              pagesStatus =
+                "A Pages deploy has been triggered; feeds will appear after that workflow completes.";
+            } else if (pagesActive) {
+              pagesStatus =
+                "A Pages deploy is already running; your request has been persisted and will be included in the next deploy if needed.";
+              if (pagesActiveUrl) {
+                pagesStatus = `${pagesStatus} Active run: ${pagesActiveUrl}`;
+              }
+            }
+
             const body = [
               "Your location request has been persisted.",
               "",
@@ -742,7 +785,7 @@ jobs:
               "**Feed URLs:**",
               `- HTTPS: \`${httpsUrl}\``,
               `- webcal: \`${webcalUrl}\``,
-              "- Note: A Pages deploy has been triggered; feeds will appear after that workflow completes.",
+              pagesStatus ? `- Note: ${pagesStatus}` : null,
               "",
               "**How to subscribe:**",
               `- **Apple Calendar**: Open ${webcalUrl} or copy the webcal URL`,
