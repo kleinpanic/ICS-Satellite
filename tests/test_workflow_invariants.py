@@ -34,6 +34,19 @@ def test_location_request_not_triggered_on_edited() -> None:
     assert "edited" not in types
 
 
+def test_location_request_permissions_allow_dispatch() -> None:
+    data = _load_workflow(".github/workflows/location_request.yml")
+    permissions = data.get("permissions", {})
+    assert isinstance(permissions, dict)
+    assert permissions.get("actions") == "write"
+
+
+def test_location_request_dispatches_pages_workflow() -> None:
+    text = Path(".github/workflows/location_request.yml").read_text()
+    assert "createWorkflowDispatch" in text
+    assert "pages.yml" in text
+
+
 def test_pages_workflow_is_single_deployer() -> None:
     text = Path(".github/workflows/pages.yml").read_text()
     assert "actions/deploy-pages" in text

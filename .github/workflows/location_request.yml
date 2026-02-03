@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
   issues: write
+  actions: write
 
 concurrency:
   group: "location-request"
@@ -87,7 +88,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: "Processing location request... I will update this issue when the request is validated and persisted. GitHub Pages deployment happens separately.",
+                body: "Processing location request... I will update this issue when the request is validated and persisted. A Pages deploy will be triggered after persistence.",
               });
             }
 
@@ -532,6 +533,30 @@ jobs:
             exit 1
           fi
 
+      - name: Trigger Pages deploy (workflow_dispatch)
+        if: steps.persist.outcome == 'success' && steps.persist.outputs.no_change != 'true'
+        uses: actions/github-script@v7
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const workflow_id = "pages.yml";
+            const ref =
+              context.payload.repository?.default_branch ||
+              process.env.DEFAULT_BRANCH ||
+              "main";
+            await github.rest.actions.createWorkflowDispatch({
+              owner,
+              repo,
+              workflow_id,
+              ref,
+              inputs: {
+                reason: "issueops-location-request",
+              },
+            });
+
       - name: Comment on already persisted request
         if: steps.persist.outputs.no_change == 'true'
         uses: actions/github-script@v7
@@ -717,7 +742,7 @@ jobs:
               "**Feed URLs:**",
               `- HTTPS: \`${httpsUrl}\``,
               `- webcal: \`${webcalUrl}\``,
-              "- Note: URLs may 404 until the next Pages deploy completes.",
+              "- Note: A Pages deploy has been triggered; feeds will appear after that workflow completes.",
               "",
               "**How to subscribe:**",
               `- **Apple Calendar**: Open ${webcalUrl} or copy the webcal URL`,

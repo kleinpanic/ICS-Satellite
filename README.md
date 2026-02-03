@@ -215,13 +215,14 @@ deterministic default subset capped by `max_satellites_per_request`.
 If you're on the allowlist, the automation will:
 - Validate your request
 - Store the request in the SQLite database
-- Comment on the issue with subscription URLs and the Pages workflow status
+- Trigger a Pages deploy and comment on the issue with subscription URLs and the workflow status
 
 IssueOps applies labels to show status (`processing`, `processed`, `failed`) and comments on the
 issue when validation or persistence finishes.
 
-Pages deployment happens in the dedicated Pages workflow. The feed URLs may 404 until that
-workflow completes. To retry a request after editing, remove and re-add the
+Pages deployment happens in the dedicated Pages workflow. A deploy is triggered after the
+request is persisted, and feed URLs may 404 until that workflow completes. To retry a request
+after editing, remove and re-add the
 `location-request` label (or rerun the workflow manually).
 
 If the request already exists, the automation will comment with the existing feed URLs
