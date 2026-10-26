@@ -23,13 +23,13 @@ dependencies = [
   "sgp4==2.25",
   "icalendar==6.3.2",
   "PyYAML==6.0.3",
-  "requests==2.32.5",
+  "requests==2.33.1",
   "pydantic==2.12.5",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest==9.0.2",
+  "pytest==9.0.3",
   "ruff==0.14.14",
   "mypy==1.19.1",
   "types-PyYAML==6.0.12.20241230",
