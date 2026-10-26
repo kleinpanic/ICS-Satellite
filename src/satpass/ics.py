@@ -52,7 +52,11 @@ def build_calendar(
     cal.add("prodid", PROD_ID)
     cal.add("version", "2.0")
     cal.add("x-wr-calname", name)
-    cal.add("refresh-interval", vDuration(timedelta(hours=refresh_hours)))
+    cal.add(
+        "refresh-interval",
+        vDuration(timedelta(hours=refresh_hours)),
+        parameters={"VALUE": "DURATION"},
+    )
     cal.add("x-published-ttl", vDuration(timedelta(hours=refresh_hours)))
     for event in events:
         cal.add_component(event)

@@ -32,3 +32,11 @@ def test_ics_contains_required_fields() -> None:
     assert f"PRODID:-//satpass//{__version__}//EN" in ical
     assert "UID:seattle-stations-25544-20250101T000000Z" in ical
     assert "SUMMARY:ISS PASS (max 67 deg)" in ical
+
+
+def test_calendar_refresh_interval_declares_duration_value() -> None:
+    # RFC 7986 requires VALUE=DURATION on REFRESH-INTERVAL.
+    cal = build_calendar(name="Test", refresh_hours=6, events=[])
+    ical = cal.to_ical().decode("utf-8")
+
+    assert "REFRESH-INTERVAL;VALUE=DURATION:PT6H" in ical
