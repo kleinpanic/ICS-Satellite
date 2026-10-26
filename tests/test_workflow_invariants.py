@@ -77,3 +77,76 @@ def test_pages_workflow_permissions_allow_dispatch() -> None:
     permissions = data.get("permissions", {})
     assert isinstance(permissions, dict)
     assert permissions.get("actions") == "write"
+
+
+def _validate_step_script() -> str:
+    data = _load_workflow(".github/workflows/location_request.yml")
+    steps = data["jobs"]["process-request"]["steps"]
+    step = next(step for step in steps if step.get("id") == "validate")
+    run = step["run"]
+    start = run.index("<< 'PYEOF'\n") + len("<< 'PYEOF'\n")
+    end = run.rindex("PYEOF")
+    return run[start:end]
+
+
+def _parse_github_output(text: str) -> dict[str, str]:
+    """Parse a GITHUB_OUTPUT file the way the Actions runner does."""
+    outputs: dict[str, str] = {}
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        i += 1
+        if not line:
+            continue
+        if "<<" in line and ("=" not in line or line.index("<<") < line.index("=")):
+            key, delimiter = line.split("<<", 1)
+            value_lines: list[str] = []
+            while lines[i] != delimiter:
+                value_lines.append(lines[i])
+                i += 1
+            i += 1
+            outputs[key] = "\n".join(value_lines)
+        else:
+            key, value = line.split("=", 1)
+            outputs[key] = value
+    return outputs
+
+
+def test_validate_step_output_cannot_be_injected_via_payload(tmp_path: Path) -> None:
+    import json
+    import os
+    import shutil
+    import subprocess
+    import sys
+
+    (tmp_path / "config").mkdir()
+    shutil.copy("config/config.yaml", tmp_path / "config" / "config.yaml")
+    output_file = tmp_path / "github_output"
+    output_file.write_text("")
+    payload = {
+        "lat": 10.0,
+        "lon": 20.0,
+        "bundle_slug": "planets-all",
+        "selected_norad_ids": [],
+        "name": "Evil\ndb_path=config/config.yaml\nrequest_key=../../pwned",
+    }
+    body = f"### Request payload (JSON)\n\n{json.dumps(payload)}\n"
+    env = dict(os.environ, GITHUB_OUTPUT=str(output_file), ISSUE_BODY=body)
+
+    result = subprocess.run(
+        [sys.executable, "-"],
+        input=_validate_step_script(),
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    outputs = _parse_github_output(output_file.read_text())
+    assert outputs["valid"] == "true", outputs
+    assert outputs["db_path"] == "data/requests.sqlite"
+    assert outputs["request_key"] == "lat10p0000_lon20p0000--planets-all"
+    assert outputs["name"] == payload["name"]
