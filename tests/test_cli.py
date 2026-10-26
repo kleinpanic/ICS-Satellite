@@ -87,3 +87,38 @@ def test_cli_reset_requests(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert not db_path.exists()
     assert not feed_path.exists()
+
+
+def test_cli_add_location_emits_valid_yaml_for_quoted_names() -> None:
+    import yaml
+
+    name = 'Joe\'s "Dark Sky": Site #1'
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "satpass",
+            "add-location",
+            "--name",
+            name,
+            "--lat",
+            "45.5",
+            "--lon",
+            "-122.6",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    snippet = result.stdout.split("\n", 1)[1]
+    parsed = yaml.safe_load(snippet)
+    assert parsed == [
+        {
+            "slug": "joes-dark-sky-site-1",
+            "name": name,
+            "lat": 45.5,
+            "lon": -122.6,
+            "elevation_m": 0.0,
+        }
+    ]

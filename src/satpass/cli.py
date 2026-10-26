@@ -5,6 +5,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import yaml
+
 from . import __version__
 from .build import build_all
 from .catalog import build_catalogs
@@ -171,14 +173,18 @@ def cmd_preview(args: argparse.Namespace) -> None:
 
 def cmd_add_location(args: argparse.Namespace) -> None:
     slug = args.slug or _slugify(args.name)
-    snippet = (
-        '- slug: "{slug}"\n  name: "{name}"\n  lat: {lat}\n  lon: {lon}\n  elevation_m: {elev}\n'
-    ).format(
-        slug=slug,
-        name=args.name,
-        lat=args.lat,
-        lon=args.lon,
-        elev=args.elevation_m,
+    snippet = yaml.safe_dump(
+        [
+            {
+                "slug": slug,
+                "name": args.name,
+                "lat": args.lat,
+                "lon": args.lon,
+                "elevation_m": args.elevation_m,
+            }
+        ],
+        sort_keys=False,
+        allow_unicode=True,
     )
     print("Add this snippet under locations:")
     print(snippet)
