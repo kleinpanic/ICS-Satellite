@@ -317,6 +317,9 @@ def build_all(
     if requests:
         print("Build: requested feeds")
     for req in requests:
+        if req.bundle_slug not in bundle_map:
+            print(f"Skip request: unknown bundle {req.bundle_slug} for {req.slug}")
+            continue
         bundle = bundle_map[req.bundle_slug]
         location = req.to_location(precision=config.request_defaults.slug_precision_decimals)
         if bundle.kind == "planetary":
