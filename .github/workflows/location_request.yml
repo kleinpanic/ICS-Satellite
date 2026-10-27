@@ -170,17 +170,21 @@ jobs:
           import json
           import os
           import re
+          import secrets
           import sys
           from pathlib import Path
           from datetime import datetime, timezone
           output_path = os.environ["GITHUB_OUTPUT"]
 
           def write_output(**kwargs: str) -> None:
+              # Values can contain issue-controlled text (e.g. payload name), so use the
+              # delimiter form to keep newlines from injecting extra outputs.
               with open(output_path, "a") as f:
                   for key, value in kwargs.items():
                       if value is None:
                           continue
-                      f.write(f"{key}={value}\n")
+                      delimiter = f"EOF_{secrets.token_hex(16)}"
+                      f.write(f"{key}<<{delimiter}\n{value}\n{delimiter}\n")
 
           def fail(message: str) -> None:
               print(f"::error::{message}")

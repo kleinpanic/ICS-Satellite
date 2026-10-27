@@ -558,3 +558,40 @@ def test_build_copies_favicon_assets(
         path = output_dir / filename
         assert path.exists(), f"Missing asset: {filename}"
         assert path.stat().st_size > 0, f"Empty asset: {filename}"
+
+
+@patch("satpass.build.fetch_tles")
+def test_build_skips_requests_for_removed_bundles(
+    mock_fetch_tles: patch, tmp_path: Path, minimal_config: Config
+) -> None:
+    """A stored request whose bundle was removed from config must not break the build."""
+    from satpass.config import RequestedLocation
+    from satpass.tle import TLE
+
+    mock_fetch_tles.return_value = [
+        TLE(
+            name="ISS",
+            line1="1 25544U 98067A   24120.51782528  .00021784  00000-0  38309-3 0  9991",
+            line2="2 25544  51.6411 159.9641 0004568  37.1152  67.4875 15.50283102447526",
+            norad_id=25544,
+        )
+    ]
+    conn = init_db(Path(minimal_config.request_db_path))
+    try:
+        upsert_request(
+            conn,
+            RequestedLocation(lat=40.7128, lon=-74.006, bundle_slug="retired-bundle"),
+            precision=4,
+        )
+    finally:
+        conn.close()
+
+    output_dir = tmp_path / "site"
+    requests_dir = tmp_path / "requests"
+    requests_dir.mkdir()
+
+    feeds = build_all(minimal_config, output_dir, tmp_path / "state", requests_dir)
+
+    assert [feed.path for feed in feeds] == ["feeds/test--stations.ics"]
+    manifest = json.loads((output_dir / "feeds" / "index.json").read_text())
+    assert all("retired-bundle" not in feed["path"] for feed in manifest["feeds"])
